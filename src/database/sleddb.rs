@@ -50,7 +50,7 @@ impl Database for SledDb {
         self.image_tree
             .get(key)
             .unwrap()
-            .map(|v| rmp_serde::from_slice(&v).map_err(|e| error::file_type_not_match(e)))
+            .map(|v| rmp_serde::from_slice(&v).map_err(error::file_type_not_match))
             .transpose()
     }
 
@@ -66,7 +66,7 @@ impl Database for SledDb {
         self.audio_tree
             .get(key)
             .unwrap()
-            .map(|v| SVoice::from_data(&v.to_vec()).ok_or_else(|| error::file_type_not_match("")))
+            .map(|v| SVoice::from_data(&v).ok_or_else(|| error::file_type_not_match("")))
             .transpose()
     }
     fn insert_voice<T: SVoice>(&self, value: &T) {

@@ -13,7 +13,7 @@ use crate::error;
 pub async fn save_image(data: &[u8]) -> Result<ImageInfo, RespError> {
     use tokio::io::AsyncWriteExt;
 
-    let info = ImageInfo::try_new(data).map_err(|e| error::image_info_decode_error(e))?;
+    let info = ImageInfo::try_new(data).map_err(error::image_info_decode_error)?;
     let mut file = tokio::fs::File::create(&info.path())
         .await
         .map_err(error::file_create_error)?;
@@ -31,8 +31,8 @@ pub trait SImage: Sized {
     fn get_url(&self) -> Option<String>;
     fn get_file_name(&self) -> &str;
     async fn data(&self) -> RQResult<Vec<u8>>;
-    async fn try_into_group_elem(&self, cli: &Client, target: i64) -> Option<GroupImage>;
     async fn try_into_friend_elem(&self, cli: &Client, group_code: i64) -> Option<FriendImage>;
+    async fn try_into_group_elem(&self, cli: &Client, target: i64) -> Option<GroupImage>;
     fn image_id(&self) -> Vec<u8> {
         [self.get_md5(), self.get_size().to_be_bytes().as_slice()].concat()
     }
@@ -62,10 +62,10 @@ async fn local_image_data<T: SImage>(image: &T) -> Result<Vec<u8>, std::io::Erro
 fn new_info_from_group(group_image: &GroupImage) -> ImageInfo {
     ImageInfo {
         md5: group_image.md5.clone(),
-        width: group_image.width as u32,
-        height: group_image.height as u32,
+        width: group_image.width,
+        height: group_image.height,
         image_type: group_image.image_type,
-        size: group_image.size as u32,
+        size: group_image.size,
         filename: group_image.file_path.clone(),
     }
 }
@@ -76,7 +76,7 @@ impl SImage for FriendImage {
         self.md5.as_slice()
     }
     fn get_size(&self) -> u32 {
-        self.size as u32
+        self.size
     }
     fn get_url(&self) -> Option<String> {
         Some(self.url())
@@ -116,7 +116,7 @@ impl SImage for GroupImage {
         self.md5.as_slice()
     }
     fn get_size(&self) -> u32 {
-        self.size as u32
+        self.size
     }
     fn get_url(&self) -> Option<String> {
         Some(self.url())

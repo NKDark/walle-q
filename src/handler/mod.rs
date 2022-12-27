@@ -189,7 +189,7 @@ impl Handler {
                         .map_err(error::rq_error)?,
                     RQSendItem::Voice(ptt) => self
                         .get_client()?
-                        .send_group_audio(group_code, GroupAudio(ptt))
+                        .send_group_audio(group_code, GroupAudio(*ptt))
                         .await
                         .map_err(error::rq_error)?,
                 };
@@ -199,7 +199,7 @@ impl Handler {
                 let time = receipt.time as f64;
                 let cli = self.get_client()?;
                 let event = new_event(
-                    Some(time as f64),
+                    Some(time),
                     new_group_receipt_content(
                         cli,
                         receipt,
@@ -278,7 +278,7 @@ impl Handler {
                         .map_err(error::rq_error)?,
                     RQSendItem::Voice(ptt) => self
                         .get_client()?
-                        .send_friend_audio(target, FriendAudio(ptt))
+                        .send_friend_audio(target, FriendAudio(*ptt))
                         .await
                         .map_err(error::rq_error)?,
                     _ => return Err(resp_error::unsupported_segment("forward")),
@@ -592,7 +592,7 @@ impl Handler {
                 c.message.unwrap_or_default(),
             )
             .await
-            .map_err(|e| error::rq_error(e))?;
+            .map_err(error::rq_error)?;
         Ok(())
     }
     async fn get_join_group_requests(&self) -> RespResult<Vec<JoinGroup>> {
@@ -631,7 +631,7 @@ impl Handler {
                 String::default(),
             )
             .await
-            .map_err(|e| error::rq_error(e))?;
+            .map_err(error::rq_error)?;
         Ok(())
     }
     async fn get_group_invites(&self) -> RespResult<Vec<GroupInvite>> {

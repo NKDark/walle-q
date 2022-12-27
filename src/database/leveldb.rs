@@ -63,7 +63,7 @@ impl Database for LevelDb {
             .lock()
             .unwrap()
             .get(key)
-            .map(|v| rmp_serde::from_slice(&v).map_err(|e| error::file_type_not_match(e)))
+            .map(|v| rmp_serde::from_slice(&v).map_err(error::file_type_not_match))
             .transpose()
     }
     fn insert_image<T>(&self, value: &T)

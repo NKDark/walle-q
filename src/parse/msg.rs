@@ -28,7 +28,7 @@ pub struct MsgChainBuilder<'a> {
 pub enum RQSendItem {
     Chain(MessageChain),
     Forward(Vec<ForwardMessage>),
-    Voice(Ptt),
+    Voice(Box<Ptt>),
 }
 
 #[derive(Default)]
@@ -46,7 +46,7 @@ impl TryFrom<RQSends> for RQSendItem {
         } else if !s.forward.is_empty() {
             Ok(RQSendItem::Forward(s.forward))
         } else if let Some(voice) = s.voice {
-            Ok(RQSendItem::Voice(voice))
+            Ok(RQSendItem::Voice(Box::new(voice)))
         } else {
             Err(error::empty_message(""))
         }
@@ -64,6 +64,7 @@ impl<'a> MsgChainBuilder<'a> {
             reply: false,
         }
     }
+
     pub fn private_chain_builder(cli: &'a Client, db: &'a WQDatabase, target: i64) -> Self {
         MsgChainBuilder {
             cli,
@@ -74,17 +75,17 @@ impl<'a> MsgChainBuilder<'a> {
             reply: false,
         }
     }
+
     pub(crate) async fn build(mut self, message: Segments) -> Result<RQSendItem, RespError> {
         for seg in message {
             self.push_seg(seg).await?;
         }
-        if self.reply {
-            if self.results.chain.0.len() == 1 {
-                self.results.chain.push(elem::Text::new(" ".to_string()));
-            }
+        if self.reply && self.results.chain.0.len() == 1 {
+            self.results.chain.push(elem::Text::new(" ".to_string()));
         }
         self.results.try_into()
     }
+
     #[async_recursion::async_recursion]
     pub(crate) async fn push_seg(&mut self, seg: MsgSegment) -> Result<(), RespError> {
         match seg.try_into().map_err(|e: WalleError| match e {
@@ -92,7 +93,10 @@ impl<'a> MsgChainBuilder<'a> {
             WalleError::MapMissedKey(key) => resp_error::bad_segment_data(key),
             _ => unreachable!(),
         })? {
-            WQSegment::Text(text) => Ok(self.results.chain.push(elem::Text { content: text.text })),
+            WQSegment::Text(text) => {
+                self.results.chain.push(elem::Text { content: text.text });
+                Ok(())
+            }
             WQSegment::Mention(mention) => {
                 if let Ok(user_id) = mention.user_id.parse() {
                     let display = format!(
@@ -107,18 +111,22 @@ impl<'a> MsgChainBuilder<'a> {
                             user_id.to_string()
                         }
                     );
-                    Ok(self.results.chain.push(elem::At {
+                    self.results.chain.push(elem::At {
                         display,
                         target: user_id,
-                    }))
+                    });
+                    Ok(())
                 } else {
                     Err(error::bad_param("user_id should be int"))
                 }
             }
-            WQSegment::MentionAll {} => Ok(self.results.chain.push(elem::At {
-                display: "all".to_string(),
-                target: 0,
-            })),
+            WQSegment::MentionAll {} => {
+                self.results.chain.push(elem::At {
+                    display: "all".to_string(),
+                    target: 0,
+                });
+                Ok(())
+            }
             WQSegment::Reply(reply) => {
                 let event = self
                     .db
@@ -134,29 +142,35 @@ impl<'a> MsgChainBuilder<'a> {
                     chain
                 };
                 self.reply = true;
-                Ok(self.results.chain.with_reply(elem::Reply {
+                self.results.chain.with_reply(elem::Reply {
                     reply_seq: *decoded.1.first().unwrap(),
                     sender: event.ty.user_id.parse().unwrap(),
                     time: event.time as i32,
                     elements: sub_chain,
-                }))
+                });
+                Ok(())
             }
             WQSegment::Face(face) => {
                 if let Some(id) = face.id {
-                    Ok(self.results.chain.push(elem::Face::new(id)))
+                    self.results.chain.push(elem::Face::new(id));
+                    Ok(())
                 } else if let Some(face) =
                     face.file.and_then(|name| elem::Face::new_from_name(&name))
                 {
-                    Ok(self.results.chain.push(face))
+                    self.results.chain.push(face);
+                    Ok(())
                 } else {
                     warn!("invalid face id");
                     return Err(error::bad_param("face"));
                 }
             }
-            WQSegment::Xml(xml) => Ok(self.results.chain.push(elem::RichMsg {
-                service_id: xml.service_id,
-                template1: xml.data,
-            })),
+            WQSegment::Xml(xml) => {
+                self.results.chain.push(elem::RichMsg {
+                    service_id: xml.service_id,
+                    template1: xml.data,
+                });
+                Ok(())
+            }
             WQSegment::Image(image) => {
                 let flash = image.flash.unwrap_or_default();
                 if let Some(image) = self.db.get_image::<Images>(
@@ -167,8 +181,8 @@ impl<'a> MsgChainBuilder<'a> {
                     match uri_reader::uget(&uri).await {
                         Ok(data) => self.push_image_data(data, flash).await,
                         Err(e) => {
-                            warn!("uri get failed: {}", e);
-                            Err(error::bad_param(&format!("url:{}", e)))
+                            warn!("uri get failed: {e}");
+                            Err(error::bad_param(format!("url:{e}")))
                         }
                     }
                 } else if let Some(OneBotBytes(data)) = image.bytes {
@@ -182,7 +196,10 @@ impl<'a> MsgChainBuilder<'a> {
                 match self.db.get_voice(
                     &hex::decode(&voice.file_id).map_err(|_| error::bad_param("file_id"))?,
                 )? {
-                    Some(Voices::Ptt(ptt)) => Ok(self.results.voice = Some(ptt)),
+                    Some(Voices::Ptt(ptt)) => {
+                        self.results.voice = Some(*ptt);
+                        Ok(())
+                    }
                     Some(Voices::Local(local)) if self.group => {
                         let group_audio = self
                             .cli
@@ -192,8 +209,9 @@ impl<'a> MsgChainBuilder<'a> {
                                 1,
                             )
                             .await
-                            .map_err(|e| error::rq_error(e))?;
-                        Ok(self.results.voice = Some(group_audio.0))
+                            .map_err(error::rq_error)?;
+                        self.results.voice = Some(group_audio.0);
+                        Ok(())
                     }
                     Some(Voices::Local(local)) => {
                         let friend_audio = self
@@ -204,12 +222,13 @@ impl<'a> MsgChainBuilder<'a> {
                                 std::time::Duration::from_secs(10), //just a number tired
                             )
                             .await
-                            .map_err(|e| error::rq_error(e))?;
-                        Ok(self.results.voice = Some(friend_audio.0))
+                            .map_err(error::rq_error)?;
+                        self.results.voice = Some(friend_audio.0);
+                        Ok(())
                     }
                     None => {
                         warn!("audio not found: {}", voice.file_id);
-                        return Err(error::file_not_found(voice.file_id));
+                        Err(error::file_not_found(voice.file_id))
                     }
                 }
             }
@@ -229,30 +248,29 @@ impl<'a> MsgChainBuilder<'a> {
                 let time = (node.time / 1000.0) as i32;
                 match sub_builder.build(node.message).await? {
                     RQSendItem::Chain(chain) => {
-                        Ok(self
-                            .results
+                        self.results
                             .forward
                             .push(ForwardMessage::Message(MessageNode {
                                 sender_id,
                                 sender_name: node.user_name,
                                 time,
                                 elements: chain,
-                            })))
+                            }));
+                        Ok(())
                     }
                     RQSendItem::Forward(forwards) => {
-                        Ok(self
-                            .results
+                        self.results
                             .forward
                             .push(ForwardMessage::Forward(ForwardNode {
                                 sender_id,
                                 sender_name: node.user_name,
                                 time,
                                 nodes: forwards,
-                            })))
+                            }));
+                        Ok(())
                     }
                     RQSendItem::Voice(_) => {
-                        Ok(self
-                            .results
+                        self.results
                             .forward
                             .push(ForwardMessage::Message(MessageNode {
                                 sender_id,
@@ -263,12 +281,14 @@ impl<'a> MsgChainBuilder<'a> {
                                     chain.push(ricq::msg::elem::Text::new("[语音]".to_string()));
                                     chain
                                 },
-                            })))
+                            }));
+                        Ok(())
                     }
                 }
             }
         }
     }
+
     pub(crate) fn push_flash<T: Into<FlashImage> + Into<Vec<MessageElem>>>(
         &mut self,
         image: T,
@@ -280,21 +300,23 @@ impl<'a> MsgChainBuilder<'a> {
             self.results.chain.push(image)
         }
     }
+
     pub(crate) async fn push_image(&mut self, image: Images, flash: bool) -> Result<(), RespError> {
         if self.group {
             if let Some(image) = image.try_into_group_elem(self.cli, self.target).await {
-                Ok(self.push_flash(image, flash))
+                self.push_flash(image, flash);
+                Ok(())
             } else {
                 Err(error::rq_error("upload group image failed"))
             }
+        } else if let Some(image) = image.try_into_friend_elem(self.cli, self.target).await {
+            self.push_flash(image, flash);
+            Ok(())
         } else {
-            if let Some(image) = image.try_into_friend_elem(self.cli, self.target).await {
-                Ok(self.push_flash(image, flash))
-            } else {
-                Err(error::rq_error("upload friend image failed"))
-            }
+            Err(error::rq_error("upload friend image failed"))
         }
     }
+
     pub(crate) async fn push_image_data(
         &mut self,
         data: Vec<u8>,
@@ -302,7 +324,10 @@ impl<'a> MsgChainBuilder<'a> {
     ) -> Result<(), RespError> {
         if self.group {
             match self.cli.upload_group_image(self.target, data).await {
-                Ok(image) => Ok(self.push_flash(image, flash)),
+                Ok(image) => {
+                    self.push_flash(image, flash);
+                    Ok(())
+                }
                 Err(e) => {
                     warn!(target: crate::WALLE_Q, "群图片上传失败：{}", e);
                     Err(error::rq_error(e))
@@ -310,7 +335,10 @@ impl<'a> MsgChainBuilder<'a> {
             }
         } else {
             match self.cli.upload_friend_image(self.target, data).await {
-                Ok(image) => Ok(self.push_flash(image, flash)),
+                Ok(image) => {
+                    self.push_flash(image, flash);
+                    Ok(())
+                }
                 Err(e) => {
                     warn!(target: crate::WALLE_Q, "好友图片上传失败：{}", e);
                     Err(error::rq_error(e))

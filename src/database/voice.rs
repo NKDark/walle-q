@@ -26,7 +26,7 @@ pub trait SVoice: Sized {
     fn get_md5(&self) -> &[u8];
     fn get_size(&self) -> u32;
     fn to_data(&self) -> Vec<u8>;
-    fn from_data(data: &Vec<u8>) -> Option<Self>;
+    fn from_data(data: &[u8]) -> Option<Self>;
     fn voice_id(&self) -> Vec<u8> {
         [self.get_md5(), self.get_size().to_be_bytes().as_slice()].concat()
     }
@@ -50,8 +50,8 @@ impl SVoice for Ptt {
     fn to_data(&self) -> Vec<u8> {
         self.encode_to_vec()
     }
-    fn from_data(data: &Vec<u8>) -> Option<Self> {
-        Message::decode(&data[..]).ok()
+    fn from_data(data: &[u8]) -> Option<Self> {
+        Message::decode(data).ok()
     }
 }
 
@@ -71,8 +71,8 @@ impl SVoice for LocalVoice {
     fn to_data(&self) -> Vec<u8> {
         rmp_serde::to_vec(self).unwrap()
     }
-    fn from_data(data: &Vec<u8>) -> Option<Self> {
-        rmp_serde::from_slice(&data[..]).ok()
+    fn from_data(data: &[u8]) -> Option<Self> {
+        rmp_serde::from_slice(data).ok()
     }
 }
 
@@ -86,7 +86,7 @@ impl LocalVoice {
 
 pub enum Voices {
     Local(LocalVoice),
-    Ptt(Ptt),
+    Ptt(Box<Ptt>),
 }
 
 impl SVoice for Voices {
@@ -108,13 +108,11 @@ impl SVoice for Voices {
             Voices::Ptt(v) => v.to_data(),
         }
     }
-    fn from_data(data: &Vec<u8>) -> Option<Self> {
+    fn from_data(data: &[u8]) -> Option<Self> {
         if let Some(v) = Ptt::from_data(data) {
-            Some(Voices::Ptt(v))
-        } else if let Some(v) = LocalVoice::from_data(data) {
-            Some(Voices::Local(v))
+            Some(Voices::Ptt(Box::new(v)))
         } else {
-            None
+            LocalVoice::from_data(data).map(Voices::Local)
         }
     }
 }

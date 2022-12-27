@@ -22,7 +22,7 @@ impl super::Handler {
             "url" if let Some(url) = c.url => {
                 uri_reader::uget_with_headers(&url, c.headers.unwrap_or_default())
                     .await
-                    .map_err(|e|error::net_download_fail(e))
+                    .map_err(error::net_download_fail)
             }
             "path" if let Some(path) = c.path => {
                 let input_path = PathBuf::from(path);
@@ -138,7 +138,7 @@ impl super::Handler {
             UploadFileFragmented::Prepare {
                 name, total_size, ..
             } => {
-                let file_id = format!("{}-{}", name, total_size);
+                let file_id = format!("{name}-{total_size}");
                 self.uploading_fragment.lock().await.cache_set(
                     file_id.clone(),
                     FragmentFile {
@@ -156,7 +156,7 @@ impl super::Handler {
                 ..
             } => {
                 let mut file_path = std::path::PathBuf::from(crate::FILE_CACHE_DIR);
-                file_path.push(format!("{}-{}", file_id, offset));
+                file_path.push(format!("{file_id}-{offset}"));
                 let mut file = tokio::fs::File::create(file_path)
                     .await
                     .map_err(error::file_create_error)?;
@@ -183,7 +183,7 @@ impl super::Handler {
                 let mut total_size = 0;
                 for (offset, size) in fragment.files {
                     let mut file_path = std::path::PathBuf::from(crate::FILE_CACHE_DIR);
-                    file_path.push(format!("{}-{}", file_id, offset));
+                    file_path.push(format!("{file_id}-{offset}"));
                     let mut file = tokio::fs::File::open(&file_path)
                         .await
                         .map_err(error::file_open_error)?;
@@ -213,7 +213,7 @@ impl super::Handler {
                         )));
                     }
                 }
-                self.upload_image(data).await.map(|id| Some(id))
+                self.upload_image(data).await.map(Some)
             }
         }
     }
@@ -229,7 +229,7 @@ impl super::Handler {
             let sha256 = {
                 let mut s = sha2::Sha256::default();
                 s.update(&data);
-                hex::encode(&s.finalize())
+                hex::encode(s.finalize())
             };
             let info = save_image(&data).await?;
             h.database.insert_image(&info);
@@ -249,7 +249,7 @@ impl super::Handler {
                         let sha256 = {
                             let mut s = sha2::Sha256::default();
                             s.update(&data);
-                            hex::encode(&s.finalize())
+                            hex::encode(s.finalize())
                         };
                         (i, sha256)
                     }
@@ -277,7 +277,7 @@ impl super::Handler {
                 file.seek(SeekFrom::Start(offset as u64))
                     .await
                     .map_err(error::file_read_error)?;
-                let mut data = Vec::with_capacity(size as usize);
+                let mut data = vec![0; size as usize];
                 file.read(&mut data).await.map_err(error::file_read_error)?;
                 let data = OneBotBytes(data);
                 Ok(value!({ "data": data }).into())

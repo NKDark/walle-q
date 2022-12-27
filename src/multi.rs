@@ -244,17 +244,15 @@ impl ActionHandler<Event, Action, Resp> for MultiAH {
                 }
                 Err(e) => Ok(map_action_parse_error(e).into()),
             }
-        } else {
-            if let Some(ah) = self.ahs.get(&bot.user_id) {
-                ah.0.call(action, ob).await
-            } else if self.ahs.len() == 1 {
-                for ah in self.ahs.iter() {
-                    return ah.0.call(action, ob).await;
-                }
-                Ok(resp_error::bad_handler("unreachable! How??").into())
-            } else {
-                Ok(resp_error::bad_param("self_id required").into())
+        } else if let Some(ah) = self.ahs.get(&bot.user_id) {
+            ah.0.call(action, ob).await
+        } else if self.ahs.len() == 1 {
+            if let Some(ah) = self.ahs.iter().next() {
+                return ah.0.call(action, ob).await;
             }
+            Ok(resp_error::bad_handler("unreachable! How??").into())
+        } else {
+            Ok(resp_error::bad_param("self_id required").into())
         }
     }
 }

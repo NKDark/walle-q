@@ -1,14 +1,3 @@
-use super::util::{
-    new_event, new_group_audio_content, new_group_msg_content, new_group_temp_msg_content,
-    new_private_audio_content, new_private_msg_content,
-};
-use crate::database::{Database, SVoice, WQDatabase};
-use crate::handler::Infos;
-use crate::model::{
-    Delete, Disband, FriendPoke, GroupAdminSet, GroupAdminUnset, GroupInvite, GroupMemberBan,
-    GroupNameUpdate, Join, JoinGroup, Kick, Leave, NewFriend, Recall, UserName, WalleQ, QQ,
-};
-
 use ricq::client::handler::QEvent;
 use ricq::structs::GroupMemberPermission;
 use tracing::{info, warn};
@@ -18,6 +7,18 @@ use walle_core::event::{
 };
 use walle_core::structs::Selft;
 use walle_core::{action::Action, resp::Resp, ActionHandler, EventHandler, GetStatus, OneBot};
+
+use crate::database::{Database, SVoice, WQDatabase};
+use crate::handler::Infos;
+use crate::model::{
+    Delete, Disband, FriendPoke, GroupAdminSet, GroupAdminUnset, GroupInvite, GroupMemberBan,
+    GroupNameUpdate, Join, JoinGroup, Kick, Leave, NewFriend, Recall, UserName, WalleQ, QQ,
+};
+
+use super::util::{
+    new_event, new_group_audio_content, new_group_msg_content, new_group_temp_msg_content,
+    new_private_audio_content, new_private_msg_content,
+};
 
 pub(crate) async fn qevent2event<AH, EH>(
     event: QEvent,
@@ -155,7 +156,6 @@ where
                             operator_id: e
                                 .inner
                                 .operator_uin
-                                .clone()
                                 .unwrap_or(e.inner.member_uin)
                                 .to_string(),
                         },
@@ -176,7 +176,6 @@ where
                             operator_id: e
                                 .inner
                                 .operator_uin
-                                .clone()
                                 .unwrap_or(e.inner.member_uin)
                                 .to_string(),
                         },
@@ -419,6 +418,7 @@ where
             wqdb.insert_message(&event);
             event
         }
+
         QEvent::FriendAudioMessage(fam) => {
             let message = vec![walle_core::segment::Voice {
                 file_id: fam.inner.audio.0.hex_voice_id(),
@@ -433,6 +433,7 @@ where
             wqdb.insert_message(&event);
             event
         }
+
         QEvent::FriendPoke(p) => {
             new_event(
                 None,
@@ -475,6 +476,7 @@ where
             )
             .await
         }
+
         QEvent::DeleteFriend(d) => {
             infos.friends.remove(&d.inner.uin);
             new_event(
@@ -491,6 +493,7 @@ where
             )
             .await
         }
+
         QEvent::KickedOffline(_) => {
             warn!(target: crate::WALLE_Q, "Kicked Off 从其他客户端强制下线");
             new_event(
@@ -507,6 +510,7 @@ where
             )
             .await
         }
+
         QEvent::MSFOffline(_) => {
             warn!(target: crate::WALLE_Q, "MSF offline 服务器强制下线");
             new_event(
@@ -523,6 +527,7 @@ where
             )
             .await
         }
+
         QEvent::ClientDisconnect(_) => {
             warn!(target: crate::WALLE_Q, "网络断线，自动重连。。。");
             return None;

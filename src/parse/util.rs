@@ -199,7 +199,7 @@ pub(crate) fn new_group_audio_content(
         (),
         Names {
             group_name: group_audio.group_name.to_string(),
-            user_name: group_audio.group_card.to_string(),
+            user_name: group_audio.group_card,
         },
         WalleQ {},
     )
@@ -226,7 +226,7 @@ pub(crate) fn new_private_msg_content(
         Private {},
         (),
         UserName {
-            user_name: friend_message.from_nick.to_string(),
+            user_name: friend_message.from_nick,
         },
         WalleQ {},
     )
@@ -282,7 +282,7 @@ pub(crate) fn new_private_audio_content(
         Private {},
         (),
         UserName {
-            user_name: friend_audio.from_nick.to_string(),
+            user_name: friend_audio.from_nick,
         },
         WalleQ {},
     )
@@ -311,7 +311,7 @@ pub(crate) fn new_group_temp_msg_content(
         },
         (),
         UserName {
-            user_name: group_temp.from_nick.to_string(),
+            user_name: group_temp.from_nick,
         },
         WalleQ {},
     )

@@ -33,9 +33,7 @@ error_type!(silk_encode_failed, 61005, "silk编码失败");
 pub fn map_action_parse_error(error: WalleError) -> RespError {
     match error {
         WalleError::DeclareNotMatch(_, get) => resp_error::unsupported_action(get),
-        WalleError::MapMissedKey(expect) => {
-            resp_error::bad_param(format!("missing key {}", expect))
-        }
+        WalleError::MapMissedKey(expect) => resp_error::bad_param(format!("missing key {expect}")),
         e => {
             tracing::warn!(target: crate::WALLE_Q, "{}", e);
             resp_error::bad_handler(e.to_string())

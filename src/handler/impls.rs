@@ -162,7 +162,7 @@ impl ActionHandler<Event, Action, Resp> for Handler {
         .await
         .map_err(|e| WalleError::Other(e.to_string()))?;
         self.update_infos().await?;
-        self.spawn(net, qevent_rx, &ob).await
+        self.spawn(net, qevent_rx, ob).await
     }
     async fn call<AH, EH>(&self, action: Action, _: &Arc<OneBot<AH, EH>>) -> WalleResult<Resp>
     where

@@ -100,7 +100,7 @@ async fn qrcode_login(cli: &Arc<Client>) -> RQResult<()> {
         }
         let rended = crate::util::qrcode2str(&f.image_data);
         info!(target: crate::WALLE_Q, "扫描二维码登录:");
-        println!("{}", rended);
+        println!("{rended}");
         loop {
             tokio::time::sleep(Duration::from_secs(5)).await;
             match cli.query_qrcode_result(&f.sig).await? {
@@ -195,29 +195,23 @@ pub(crate) async fn action_login(
     password: Option<String>,
 ) -> RQResult<Resp> {
     let token_path = format!("{}/{}-{}", crate::CLIENT_DIR, uin, TOKEN_PATH);
-    match fs::read(&token_path).map(|s| rmp_serde::from_slice(&s)) {
-        Ok(Ok(token)) => {
-            info!(
-                target: crate::WALLE_Q,
-                "成功读取 Token, 尝试使用 Token 登录"
-            );
-            match cli.token_login(token).await {
-                Ok(_) => {
-                    info!(target: crate::WALLE_Q, "Token 登录成功");
-                    after_login(cli).await;
-                    return Ok(LoginResp {
-                        user_id: cli.uin().await.to_string(),
-                        url: None,
-                        qrcode: None,
-                    }
-                    .into());
-                }
-                Err(_) => {
-                    warn!(target: crate::WALLE_Q, "Token 登录失败");
-                }
+    if let Ok(Ok(token)) = fs::read(&token_path).map(|s| rmp_serde::from_slice(&s)) {
+        info!(
+            target: crate::WALLE_Q,
+            "成功读取 Token, 尝试使用 Token 登录"
+        );
+        if (cli.token_login(token).await).is_ok() {
+            info!(target: crate::WALLE_Q, "Token 登录成功");
+            after_login(cli).await;
+            return Ok(LoginResp {
+                user_id: cli.uin().await.to_string(),
+                url: None,
+                qrcode: None,
             }
+            .into());
+        } else {
+            warn!(target: crate::WALLE_Q, "Token 登录失败");
         }
-        _ => {}
     };
     if let (Ok(uin), Some(ref password)) = (uin.parse(), password) {
         info!(target: crate::WALLE_Q, "login with password");
